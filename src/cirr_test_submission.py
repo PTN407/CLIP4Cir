@@ -5,6 +5,7 @@ from operator import itemgetter
 from pathlib import Path
 from typing import List, Tuple, Dict
 
+import faiss
 import clip
 import numpy as np
 import torch
@@ -36,10 +37,15 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
     classic_test_dataset = CIRRDataset('test1', 'classic', preprocess)
     index_features, index_names = extract_index_features(classic_test_dataset, clip_model)
     relative_test_dataset = CIRRDataset('test1', 'relative', preprocess)
+                                     
+    index_features = F.normalize(index_features, dim=-1).float()
+    faiss_index = faiss.IndexFlatIP(640)
+    faiss_index.add(cirr_test_index_features)
+    
 
     # Generate test prediction dicts for CIRR
     pairid_to_predictions, pairid_to_group_predictions = generate_cirr_test_dicts(relative_test_dataset, clip_model,
-                                                                                  index_features, index_names,
+                                                                                  faiss_index, index_names,
                                                                                   combining_function)
 
     submission = {
@@ -66,7 +72,7 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
         json.dump(group_submission, file, sort_keys=True)
 
 
-def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLIP, index_features: torch.tensor,
+def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLIP, faiss_index,
                              index_names: List[str], combining_function: callable) \
         -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
     """
@@ -83,17 +89,14 @@ def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLI
     # Generate predictions
     predicted_features, reference_names, group_members, pairs_id = \
         generate_cirr_test_predictions(clip_model, relative_test_dataset, combining_function, index_names,
-                                       index_features)
+                                       faiss_index)
 
     print(f"Compute CIRR prediction dicts")
 
-    # Normalize the index features
-    index_features = F.normalize(index_features, dim=-1).float()
-
     # Compute the distances and sort the results
-    distances = 1 - predicted_features @ index_features.T
-    sorted_indices = torch.argsort(distances, dim=-1).cpu()
+    score, sorted_indices = faiss_index.search(predicted_features.unsqueeze(0), n_retrieved)
     sorted_index_names = np.array(index_names)[sorted_indices]
+    
 
     # Delete the reference image from the results
     reference_mask = torch.tensor(
