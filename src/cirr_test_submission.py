@@ -39,15 +39,15 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
     relative_test_dataset = CIRRDataset('test1', 'relative', preprocess)
                                      
     index_features = F.normalize(index_features, dim=-1).float()
+    name_to_feat = dict(zip(index_names, index_features))
     faiss_index = faiss.IndexFlatIP(640)
-    faiss_index.add(cirr_test_index_features)
+    faiss_index.add(index_features.cpu().detach().numpy())
     
 
     # Generate test prediction dicts for CIRR
     pairid_to_predictions, pairid_to_group_predictions = generate_cirr_test_dicts(relative_test_dataset, clip_model,
                                                                                   faiss_index, index_names,
-                                                                                  combining_function)
-
+                                                                                  combining_function, name_to_feat)
     submission = {
         'version': 'rc2',
         'metric': 'recall'
@@ -71,9 +71,8 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
     with open(submissions_folder_path / f"recall_subset_submission_{file_name}.json", 'w+') as file:
         json.dump(group_submission, file, sort_keys=True)
 
-
 def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLIP, faiss_index,
-                             index_names: List[str], combining_function: callable) \
+                             index_names: List[str], combining_function: callable, name_to_feat) \
         -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
     """
     Compute test prediction dicts for CIRR dataset
@@ -89,21 +88,26 @@ def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLI
     # Generate predictions
     predicted_features, reference_names, group_members, pairs_id = \
         generate_cirr_test_predictions(clip_model, relative_test_dataset, combining_function, index_names,
-                                       faiss_index)
+                                       faiss_index, name_to_feat)
 
     print(f"Compute CIRR prediction dicts")
 
     # Compute the distances and sort the results
-    score, sorted_indices = faiss_index.search(predicted_features.unsqueeze(0), n_retrieved)
+    score, sorted_indices = faiss_index.search(predicted_features.cpu().detach().numpy(), 60)
+    new_sorted_indices = []
+    for samp in sorted_indices:
+        new_sorted_indices.append(np.concatenate((np.array(samp), np.array(list(set(range(len(index_names))) - set(samp))))))
+    sorted_indices = np.array(new_sorted_indices)
     sorted_index_names = np.array(index_names)[sorted_indices]
     
-
     # Delete the reference image from the results
     reference_mask = torch.tensor(
         sorted_index_names != np.repeat(np.array(reference_names), len(index_names)).reshape(len(sorted_index_names),
                                                                                              -1))
     sorted_index_names = sorted_index_names[reference_mask].reshape(sorted_index_names.shape[0],
                                                                     sorted_index_names.shape[1] - 1)
+    
+
     # Compute the subset predictions
     group_members = np.array(group_members)
     group_mask = (sorted_index_names[..., None] == group_members[:, None, :]).sum(-1).astype(bool)
@@ -119,7 +123,7 @@ def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLI
 
 
 def generate_cirr_test_predictions(clip_model: CLIP, relative_test_dataset: CIRRDataset, combining_function: callable,
-                                   index_names: List[str], index_features: torch.tensor) -> \
+                                   index_names: List[str], faiss_index, name_to_feat) -> \
         Tuple[torch.tensor, List[str], List[List[str]], List[str]]:
     """
     Compute CIRR predictions on the test set
@@ -137,8 +141,6 @@ def generate_cirr_test_predictions(clip_model: CLIP, relative_test_dataset: CIRR
     relative_test_loader = DataLoader(dataset=relative_test_dataset, batch_size=32,
                                       num_workers=multiprocessing.cpu_count(), pin_memory=True)
 
-    # Get a mapping from index names to index features
-    name_to_feat = dict(zip(index_names, index_features))
 
     # Initialize pairs_id, predicted_features, group_members and reference_names
     pairs_id = []
