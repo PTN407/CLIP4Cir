@@ -38,10 +38,9 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
     index_features, index_names = extract_index_features(classic_test_dataset, clip_model)
     relative_test_dataset = CIRRDataset('test1', 'relative', preprocess)
                                      
-    index_features = F.normalize(index_features, dim=-1).float()
     name_to_feat = dict(zip(index_names, index_features))
     faiss_index = faiss.IndexFlatIP(640)
-    faiss_index.add(index_features.cpu().detach().numpy())
+    faiss_index.add(F.normalize(index_features, dim=-1).float().cpu().detach().numpy())
     
 
     # Generate test prediction dicts for CIRR
