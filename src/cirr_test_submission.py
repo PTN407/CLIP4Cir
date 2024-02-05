@@ -43,18 +43,18 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
     name_to_feat = dict(zip(index_names, index_features))
     if faisstype == 'PCA+IVFHNSW':
         faiss_index = faiss.index_factory(640, "PCA320,IVF10_HNSW32,Flat", faiss.METRIC_INNER_PRODUCT)
-        faiss1 = copy.deepcopy(faiss_index)
+        faiss1 = faiss.index_factory(640, "PCA320,IVF10_HNSW32,Flat", faiss.METRIC_INNER_PRODUCT)
     elif faisstype == 'PCA':
         faiss_index = faiss.index_factory(640, "PCA320,Flat", faiss.METRIC_INNER_PRODUCT)
-        faiss1 = copy.deepcopy(faiss_index)
+        faiss1 = faiss.index_factory(640, "PCA320,Flat", faiss.METRIC_INNER_PRODUCT)
     elif faisstype == 'IVFHNSW':
         faiss_index = faiss.index_factory(640, "IVF10_HNSW32,Flat", faiss.METRIC_INNER_PRODUCT)
-        faiss1 = copy.deepcopy(faiss_index)
+        faiss1 = faiss.index_factory(640, "IVF10_HNSW32,Flat", faiss.METRIC_INNER_PRODUCT)
     else:
         faiss_index = faiss.index_factory(640, "Flat", faiss.METRIC_INNER_PRODUCT)
-        faiss1 = copy.deepcopy(faiss_index)
+        faiss1 = faiss.index_factory(640, "Flat", faiss.METRIC_INNER_PRODUCT)
     st = time.time()
-    if faiss_index in ['PCA+IVFHNSW', 'PCA', 'IVFHNSW']:
+    if faisstype in ['PCA+IVFHNSW', 'PCA', 'IVFHNSW']:
         faiss1.train(F.normalize(torch.tile(index_features, (100, 1)), dim=-1).float().cpu().detach().numpy())
     ed = time.time()
     faiss_index.train(F.normalize(index_features, dim=-1).float().cpu().detach().numpy())
@@ -64,7 +64,7 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
 
     # Generate test prediction dicts for CIRR
     pairid_to_predictions, pairid_to_group_predictions = generate_cirr_test_dicts(relative_test_dataset, clip_model,
-                                                                                  faiss_index, index_names,
+                                                                                  faiss_index, faiss1, index_names,
                                                                                   combining_function, name_to_feat)
     submission = {
         'version': 'rc2',
@@ -89,7 +89,7 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
     with open(submissions_folder_path / f"recall_subset_submission_{file_name}.json", 'w+') as file:
         json.dump(group_submission, file, sort_keys=True)
 
-def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLIP, faiss_index,
+def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLIP, faiss_index, faiss1,
                              index_names: List[str], combining_function: callable, name_to_feat) \
         -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
     """
