@@ -39,7 +39,8 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
     relative_test_dataset = CIRRDataset('test1', 'relative', preprocess)
                                      
     name_to_feat = dict(zip(index_names, index_features))
-    faiss_index = faiss.IndexFlatIP(640)
+    faiss_index = faiss.index_factory(640, "PCA320,IVF10_HNSW32,Flat")
+    faiss_index.train(F.normalize(index_features, dim=-1).float().cpu().detach().numpy())
     faiss_index.add(F.normalize(index_features, dim=-1).float().cpu().detach().numpy())
     
 
