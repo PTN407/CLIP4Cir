@@ -14,6 +14,8 @@ from clip.model import CLIP
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+import copy
+import time
 from combiner_train import extract_index_features
 from data_utils import CIRRDataset, targetpad_transform, squarepad_transform, base_path
 from combiner import Combiner
@@ -21,7 +23,7 @@ from utils import element_wise_sum, device
 
 
 def generate_cirr_test_submissions(combining_function: callable, file_name: str, clip_model: CLIP,
-                                   preprocess: callable):
+                                   preprocess: callable, faisstype):
     """
    Generate and save CIRR test submission files to be submitted to evaluation server
    :param combining_function: function which takes as input (image_features, text_features) and outputs the combined
@@ -39,8 +41,24 @@ def generate_cirr_test_submissions(combining_function: callable, file_name: str,
     relative_test_dataset = CIRRDataset('test1', 'relative', preprocess)
                                      
     name_to_feat = dict(zip(index_names, index_features))
-    faiss_index = faiss.index_factory(640, "PCA320,IVF10_HNSW32,Flat")
+    if faisstype == 'PCA+IVFHNSW':
+        faiss_index = faiss.index_factory(640, "PCA320,IVF10_HNSW32,Flat", faiss.METRIC_INNER_PRODUCT)
+        faiss1 = copy.deepcopy(faiss_index)
+    elif faisstype == 'PCA':
+        faiss_index = faiss.index_factory(640, "PCA320,Flat", faiss.METRIC_INNER_PRODUCT)
+        faiss1 = copy.deepcopy(faiss_index)
+    elif faisstype == 'IVFHNSW':
+        faiss_index = faiss.index_factory(640, "IVF10_HNSW32,Flat", faiss.METRIC_INNER_PRODUCT)
+        faiss1 = copy.deepcopy(faiss_index)
+    else:
+        faiss_index = faiss.index_factory(640, "Flat", faiss.METRIC_INNER_PRODUCT)
+        faiss1 = copy.deepcopy(faiss_index)
+    st = time.time()
+    if faiss_index in ['PCA+IVFHNSW', 'PCA', 'IVFHNSW']:
+        faiss1.train(F.normalize(torch.tile(index_features, (100, 1)), dim=-1).float().cpu().detach().numpy())
+    ed = time.time()
     faiss_index.train(F.normalize(index_features, dim=-1).float().cpu().detach().numpy())
+    print('Train time: ', ed - st)
     faiss_index.add(F.normalize(index_features, dim=-1).float().cpu().detach().numpy())
     
 
@@ -93,7 +111,12 @@ def generate_cirr_test_dicts(relative_test_dataset: CIRRDataset, clip_model: CLI
     print(f"Compute CIRR prediction dicts")
 
     # Compute the distances and sort the results
+    st = time.time()
+    score, sorted_indices = faiss1.search(predicted_features.cpu().detach().numpy(), 60)
+    ed = time.time()
     score, sorted_indices = faiss_index.search(predicted_features.cpu().detach().numpy(), 60)
+    print('Search time: ', ed - st)
+
     new_sorted_indices = []
     for samp in sorted_indices:
         new_sorted_indices.append(np.concatenate((np.array(samp), np.array(list(set(range(len(index_names))) - set(samp))))))
@@ -186,6 +209,8 @@ def main():
     parser.add_argument("--target-ratio", default=1.25, type=float, help="TargetPad target ratio")
     parser.add_argument("--transform", default="targetpad", type=str,
                         help="Preprocess pipeline, should be in ['clip', 'squarepad', 'targetpad'] ")
+    parser.add_argument("--faiss", default="None", type=str,
+                        help="Preprocess pipeline, should be in ['None', 'PCA', 'IVFHSNW', 'PCA+IVFHSNW'] ")
     args = parser.parse_args()
     clip_model, clip_preprocess = clip.load(args.clip_model_name, device=device, jit=False)
     input_dim = clip_model.visual.input_resolution
@@ -206,7 +231,7 @@ def main():
     else:
         print('CLIP default preprocess pipeline is used')
         preprocess = clip_preprocess
-
+        
     if args.combining_function.lower() == 'sum':
         if args.combiner_path:
             print("Be careful, you are using the element-wise sum as combining_function but you have also passed a path"
@@ -221,7 +246,7 @@ def main():
     else:
         raise ValueError("combiner_path should be in ['sum', 'combiner']")
 
-    generate_cirr_test_submissions(combining_function, args.submission_name, clip_model, preprocess)
+    generate_cirr_test_submissions(combining_function, args.submission_name, clip_model, preprocess, args.faiss)
 
 
 if __name__ == '__main__':
