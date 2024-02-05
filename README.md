@@ -282,7 +282,8 @@ python src/cirr_test_submission.py
    --clip-model-name RN50x4 \
    --clip-model-path {path-to-fine-tuned-CLIP} \
    --target-ratio 1.25 \
-   --transform targetpad
+   --transform targetpad \
+   --faiss {'None', 'PCA', 'IVFHSNW' or 'PCA+IVFHSNW'}
 ```
 
 
