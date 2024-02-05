@@ -8,7 +8,7 @@
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/composed-image-retrieval-using-contrastive/image-retrieval-on-fashion-iq)](https://paperswithcode.com/sota/image-retrieval-on-fashion-iq?p=composed-image-retrieval-using-contrastive)
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/composed-image-retrieval-using-contrastive/image-retrieval-on-cirr)](https://paperswithcode.com/sota/image-retrieval-on-cirr?p=composed-image-retrieval-using-contrastive)
 
-This is the **official repository** for the [**paper**](https://arxiv.org/abs/2308.11485) "*Composed Image Retrieval using Contrastive Learning and Task-oriented CLIP-based Features*".
+Test repo for final project for the CS336 course - Multimedia Information Retrieval at UIT. This is based on **official repository** for the [**paper**](https://arxiv.org/abs/2308.11485) "*Composed Image Retrieval using Contrastive Learning and Task-oriented CLIP-based Features*".
 
 
 ## Citation
@@ -133,7 +133,8 @@ It is also recommended to have a properly initialized Comet.ml account to have b
 * ```combiner_train.py```: Combiner training file
 * ```validate.py```: compute metrics on the validation sets
 * ```cirr_test_submission.py```: generate test prediction on cirr test set
-
+* ```CLIP4CirTest.ipynb```: Example notebook, run on Google Colab
+  
 **N.B** The purpose of the code in this repo is to be as clear as possible. For this reason, it does not include some optimizations such as gradient checkpointing (when fine-tuning CLIP) and feature pre-computation (when training the Combiner network)
 
 ### Data Preparation
